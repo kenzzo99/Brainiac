@@ -1,3 +1,5 @@
+// HeroButtons.jsx
+
 import React from 'react';
 
 const HeroButtons = () => {
@@ -10,15 +12,46 @@ const HeroButtons = () => {
   const handleFileChange = (event) => {
     const file = event.target.files[0];
     // Handle the file
-    console.log(file.name);
+    if (file) {
+      handleFileUpload(file)
+    };
   };
 
+  const handleFileUpload = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const response = await fetch('http://localhost:5000/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await response.json();
+      console.log('File uploaded successfully:', result);
+    } catch (error) {
+      console.error('Error uploading file:', error);
+    }
+  };
 
+  const generateMaterials = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/generateMaterials', {
+        method: 'POST',
+      });
+      const result = await response.json();
+      console.log('Materials generated succesfully', result);
+    } catch (error) {
+      console.error('Error generating materials', error);
+    }
+  };
+  
+  
+
+  // Button only initiates handleFileChange if the user selects a different file from the one previously selected
   return (
     <div className="hero-buttons">
       <button className="button start" onClick={handleButtonClick}>Upload Files</button>
       <input type="file" id="fileInput" style={{display: "none"}} onChange={handleFileChange}></input>
-      {/* <button className="button contact">CONTACT</button> */}
+      <button className="button contact" onClick={generateMaterials}>Generate Materials</button>
     </div>
   );
 };
