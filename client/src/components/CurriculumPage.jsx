@@ -8,7 +8,7 @@ function CurriculumPage() {
     const { curriculum } = useContext(CurriculumContext);
 
     return (
-        <div className="curriculum">
+        <div className="curriculum flex flex-col gap-3">
             {Object.entries(curriculum).map(([lesson, details], index) => (
                 <LessonCard key={index} lessonNumber={lesson} lessonTitle={details.Title} />
             ))}

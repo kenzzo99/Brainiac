@@ -37,6 +37,7 @@
   .logo-statement .statement {
     color: #fff42c;
     font-size: 9rem;
+    font-weight: bold;
   }
 
   .hero-buttons {
@@ -119,7 +120,7 @@
     .logo-statement .statement {
     color: #fff42c;
     font-size: 60px;
+    font-weight: bold;
     }
-    
   }
 

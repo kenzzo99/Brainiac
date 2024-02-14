@@ -387,5 +387,6 @@ module.exports = {
   generate_curriculum,
   generate_intro,
   generate_quiz,
+  generate_summary,
   generate_summaries,
 };

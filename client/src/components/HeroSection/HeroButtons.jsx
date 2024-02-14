@@ -1,8 +1,9 @@
 // HeroButtons.jsx
 
 import React, { useState, useContext } from "react";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from "react-router-dom";
 import CurriculumContext from "../../context/CurriculumContext";
+import { Input, Button } from "@nextui-org/react";
 const HeroButtons = () => {
   const [showForm, setShowForm] = useState(false);
   const [courseID, setCourseID] = useState("");
@@ -39,7 +40,7 @@ const HeroButtons = () => {
   };
 
   const handleCurriculumClick = () => {
-    setShowForm(true);
+    setShowForm((prevShowForm) => !prevShowForm);
   };
 
   const generateMaterials = async () => {
@@ -55,11 +56,8 @@ const HeroButtons = () => {
   };
 
   //
- 
 
   // ...
-
-
 
   const handleCurriculumForm = async (event) => {
     event.preventDefault();
@@ -82,8 +80,8 @@ const HeroButtons = () => {
       setShowForm(false); // Hide the form after curriculum is generated
       console.log("Curriculum generated successfully", result);
 
-        // Navigate to the CurriculumPage
-    navigate('/curriculum');
+      // Navigate to the CurriculumPage
+      navigate("/curriculum");
     } catch (error) {
       console.error("Error generating curriculum", error);
     }
@@ -124,28 +122,32 @@ const HeroButtons = () => {
         onChange={handleFileChange}
       ></input>
       {courseID && <p>Course ID: {courseID}</p>}
-      <button className="button contact" onClick={handleCurriculumClick}>
-        Generate Curriculum
-      </button>
-      {showForm && (
-        <form onSubmit={handleCurriculumForm}>
-          <label>
-            Course ID:
-            <input
+      <div className="flex flex-col gap-3">
+        <button className="button contact" onClick={handleCurriculumClick}>
+          Generate Curriculum
+        </button>
+        {showForm && (
+          <form onSubmit={handleCurriculumForm} className="flex flex-col gap-3">
+            <Input
+              isRequired
               type="text"
+              label="Course ID"
               value={courseID}
+              className="max-w"
               onChange={(e) => setCourseID(e.target.value)}
             />
-          </label>
-          <input type="submit" value="Submit" />
-        </form>
-      )}
-{curriculum && Object.entries(curriculum).map(([key, value], index) => (
-  <p key={index}>{key}: {value.Title}</p>
-))}
-      <button className="button contact" onClick={generateMaterials}>
-        Generate Materials
-      </button>
+            <Button color="default" size="sm" type="submit">
+              Submit
+            </Button>
+          </form>
+        )}
+      </div>
+      {curriculum &&
+        Object.entries(curriculum).map(([key, value], index) => (
+          <p key={index}>
+            {key}: {value.Title}
+          </p>
+        ))}
     </div>
   );
 };
