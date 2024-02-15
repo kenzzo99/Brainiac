@@ -16,7 +16,7 @@ function App() {
         <Router>
           <div className="App">
             <Routes>
-              <Route path="/curriculum" element={<CurriculumPage />} />
+              <Route path="/curriculum/:courseID" element={<CurriculumPage />} />
               <Route path="/" element={<HeroSection />} />
             </Routes>
           </div>

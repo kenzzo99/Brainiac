@@ -2,7 +2,7 @@ import React from "react";
 import {Button, Card, CardHeader, CardBody, CardFooter, Divider, Link, Image} from "@nextui-org/react";
 import LessonSummaryButton from "./LessonSummaryButton";
 
-export default function LessonCard({ lessonNumber, lessonTitle }) {
+export default function LessonCard({ lessonNumber, lessonTitle, courseID }) {
   return (
     <Card className="max-w-[400px]">
       <CardHeader className="flex gap-3 justify-center">
@@ -17,7 +17,7 @@ export default function LessonCard({ lessonNumber, lessonTitle }) {
       </CardBody>
       <Divider/>
       <CardFooter className="flex flex-col gap-3 justify-center">
-        <LessonSummaryButton lessonId={lessonTitle} />
+        <LessonSummaryButton courseID= {courseID} lessonTitle={lessonTitle} />
           <Button color="primary" size="lg">
       Lesson Quiz
     </Button>

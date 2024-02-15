@@ -1,38 +1,39 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import { Button } from "@nextui-org/react";
-import axios from 'axios'; // Assuming you're using axios to fetch data
-import PDFViewer from './PDFViewer';
+import PDFViewer from "./PDFViewer";
 
-function LessonSummaryButton({ lessonTitle }) {
-    const [summary, setSummary] = useState(null);
+function LessonSummaryButton({ courseID, lessonTitle }) {
+  const [summary, setSummary] = useState(null);
+  const [showReader, setShowReader] = useState(false);
 
-    useEffect(() => {
-        // Fetch the summary from MongoDB when the component mounts
-        const fetchSummary = async () => {
-            const res = await axios.get(`/api/summary/${lessonTitle}`); // Assuming you have an API endpoint to fetch the summary --> IMPLEMENT THIS
-            setSummary(res.data);
-        };
+const handleClick = async () => {
+    try {
+        console.log("Lesson Title:", lessonTitle);
+        const response = await fetch(
+            `http://localhost:5000/api/summary/${courseID}/${lessonTitle}`
+        );
 
-        fetchSummary();
-    }, [lessonTitle]);
-
-    const handleClick = async () => {
-        if (!summary) {
-            // If the summary hasn't been generated, generate it
-            const res = await axios.get(`http://localhost:5000/generateSummary/${lessonTitle}`);
-            const newSummary = res.data;
-            setSummary(newSummary);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
-    };
 
-    return (
-        <div>
-            <Button color="primary" size="lg" onClick={handleClick}>
-                Lesson Summary
-            </Button>
-            {summary && <PDFViewer file={summary} />}
-        </div>
-    );
+        const lesson = await response.text();
+        console.log("Summary data:", lesson);
+        setSummary(lesson);
+        setShowReader(true);
+    } catch (error) {
+        console.error("Error:", error);
+    }
+};
+
+  return (
+    <div>
+      <Button color="primary" size="lg" onClick={handleClick}>
+        Lesson Summary
+      </Button>
+      {summary && showReader && <PDFViewer file={summary} />}
+    </div>
+  );
 }
 
 export default LessonSummaryButton;

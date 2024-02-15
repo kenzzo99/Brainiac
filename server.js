@@ -5,7 +5,7 @@ const express = require("express");
 const gptService = require("./gptService");
 const cors = require("cors");
 const uploadRouter = require("./routes/upload");
-
+const axios = require('axios');
 // MongoDB dependencies and models.
 const mongoose = require("mongoose");
 const User = require("./models/user"); // database schemas for mongoDB
@@ -77,24 +77,28 @@ app.post("/generateSummary", async (req, res) => {
     // get the userID from the request
     const userID = req.body.userID;
 
-    // get the assistantID from the request
-    const assistantID = req.body.assistantID;
-
-    // get lesson name from the request
-    const LessonName = req.body.LessonName;
-
-    // Find the course in the database by assitantID
-    const course = await Course.findOne({ assistantID: assistantID });
+    // get the courseID from the request
+    const courseID = req.body.courseID;
+    console.log("Course ID: ", courseID);
+    // get the lessonTitle from the request
+    const lessonTitle = req.body.lessonTitle;
+    console.log("Lesson Name: ", lessonTitle);
+    // get assistantID from courseID
+    const course = await Course.findById(courseID);
     if (!course) {
       return res.status(404).json({ message: "Course not found" });
     }
-
+    const assistantID = course.assistantID;
+    console.log("Assistant ID: ", assistantID);
+    
+    console.log("We are here");
     // Generate the summary for the given lesson
-    let summary = gptService.generate_summary(assistantID, LessonName);
+    let summary = await gptService.generate_summary(assistantID, lessonTitle);
     // Create new Lesson db entry using summary
     const newLesson = new Lesson({
-        title: LessonName,
-        content: summary
+        title: lessonTitle,
+        content: summary,
+        courseID: courseID,
     });
     newLesson.save().then((result) => {
         console.log(result);
@@ -102,8 +106,8 @@ app.post("/generateSummary", async (req, res) => {
         console.log(err);
     });
     // Add the lesson to the course
-    course.addLessons([newLesson._id]);
-    res.json("Summary generated");
+    course.addLessons(newLesson.id);
+    res.json(newLesson);
 });
 
 app.post("/generateCurriculum", async (req, res) => {
@@ -118,7 +122,6 @@ app.post("/generateCurriculum", async (req, res) => {
 
   // get assistant id from the course
   const assistantID = course.assistantID;
-  console.log(assistantID);
   // Generate the curriculum (returns a JSON object of curriculum)
   let curriculum = await gptService.generate_curriculum(assistantID);
   // Store the curriculum for the course
@@ -144,7 +147,7 @@ app.post("/generateMaterials", async (req, res) => {
   // Generate the curriculum (returns a JSON object of curriculum)
   let curriculum,
     thread = await gptService.generate_curriculum(assistantID);
-  console.log(JSON.stringify(curriculum));
+  // console.log(JSON.stringify(curriculum));
   // Store the curriculum for the course
   course.curriculum = curriculum;
   await course.save();
@@ -172,6 +175,48 @@ app.post("/generateMaterials", async (req, res) => {
   res.json("Materials generated");
 
   // JSON format quiz with multiple choice questions and correct answers
+});
+
+// Route for fetching the curriculum for a course
+app.get("/api/curriculum/:courseID", async (req, res) => {
+  try {
+    const courseID = req.params.courseID;
+    const course = await Course.findById(courseID);
+    if (!course) {
+      return res.status(404).json({ message: "Course not found" });
+    }
+    res.send(course.curriculum);
+  } catch (error) {
+    console.error('Error retrieving curriculum:', error);
+    res.status(500).send('Error retrieving curriculum');
+  }
+});
+
+
+
+// Route for fetching the summary for a lesson
+app.get("/api/summary/:courseID/:lessonTitle", async (req, res) => {
+  try {
+    const courseID = req.params.courseID;
+    const lessonTitle = req.params.lessonTitle;
+    console.log("Course ID: ", courseID);
+    console.log("Lesson Title: ", req.params.lessonTitle);
+    const lesson = await Lesson.findOne({ courseID: courseID, title: lessonTitle });
+    if (!lesson) {
+      // Call the generateSummary route
+      const summaryResponse = await axios.post(`http://localhost:5000/generateSummary`, {
+        courseID: courseID,
+        lessonTitle: lessonTitle
+      });
+      console.log("Summary Response: ", summaryResponse.data);
+      const summary = summaryResponse.data;
+      return res.status(200).json( summary );
+    }
+    res.send(lesson.content);
+  } catch (error) {
+    console.error('Error retrieving summary:', error);
+    res.status(500).send('Error retrieving summary');
+  }
 });
 
 // Start the server

@@ -13,6 +13,7 @@ const CourseSchema = new mongoose.Schema({
   // Include other relevant fields as needed
 });
 
+
 // Add one or multiple lessons to a course
 CourseSchema.methods.addLessons = async function (lessonIDs) {
   this.lessonIDs.push(...lessonIDs);
@@ -24,5 +25,11 @@ CourseSchema.methods.addQuizzes = async function (quizIDs) {
   this.quizIDs.push(...quizIDs);
   await this.save();
 };
+
+// Get curriculum for a course
+CourseSchema.methods.getCurriculum = async function () {
+  return this.curriculum;
+};
+
 
 module.exports = mongoose.model('Course', CourseSchema);

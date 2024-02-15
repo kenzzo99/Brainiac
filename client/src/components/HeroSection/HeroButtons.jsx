@@ -68,44 +68,36 @@ const HeroButtons = () => {
     };
 
     try {
-      const response = await fetch("http://localhost:5000/generateCurriculum", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      });
-      const result = await response.json();
-      setCurriculum(result);
-      setShowForm(false); // Hide the form after curriculum is generated
-      console.log("Curriculum generated successfully", result);
+      // First, try to fetch the existing curriculum
+      const response = await fetch(
+        `http://localhost:5000/api/curriculum/${courseID}`
+      );
+      const existingCurriculum = await response.json();
 
-      // Navigate to the CurriculumPage
-      navigate("/curriculum");
+      if (existingCurriculum && Object.keys(existingCurriculum).length > 0) {
+        // If a curriculum exists, navigate to it
+        navigate(`/curriculum/${courseID}`);
+      } else {
+        // If no curriculum exists, generate a new one
+        const response = await fetch(
+          "http://localhost:5000/generateCurriculum",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(requestBody),
+          }
+        );
+        const result = await response.json();
+        setCurriculum(result);
+        console.log("Curriculum generated successfully", result);
+
+        // Navigate to the CurriculumPage
+        navigate(`/curriculum/${courseID}`);
+      }
     } catch (error) {
-      console.error("Error generating curriculum", error);
-    }
-  };
-
-  const generateCurriculum = async () => {
-    // add courseID to request body
-    const courseID = "your-course-id";
-    const requestBody = {
-      courseID: courseID,
-    };
-
-    try {
-      const response = await fetch("http://localhost:5000/generateCurriculum", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      });
-      const result = await response.json();
-      console.log("Curriculum generated successfully", result);
-    } catch (error) {
-      console.error("Error generating curriculum", error);
+      console.error("Error fetching or generating curriculum", error);
     }
   };
 

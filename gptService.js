@@ -135,7 +135,6 @@ async function get_last_message(thread, run) {
     }
 
     const messages = await openai.beta.threads.messages.list(thread.id);
-    console.log("JSON.stringify(messages): " + JSON.stringify(messages));
     console.log("response = messages.data[0].content[0].text.value: " + messages.data[0].content[0].text.value);
     return messages;
 
@@ -238,15 +237,19 @@ async function generate_intro(assistantID, thread) {
  * @throws {Error} If there is an error in generating the summaries.
  */
 
-async function generate_summary(assistantID, lesson, thread) {
+async function generate_summary(assistantID, lesson) {
   try {
-    // Add a message to the thread
-    const message = await openai.beta.threads.messages.create(thread.id, {
-      role: "user",
-      content:
-        `Generate the material for the following lesson: ${lesson}.` +
-        "The material you generate should include information from the uploaded material. Write the lesson" +
-        "so that it gives a student reading it deep comprehension of the topic. End by writing 3-5 relevant discussion questions.",
+    // create a thread with an initial message
+    const thread = await openai.beta.threads.create({
+      messages: [
+        {
+          role: "user",
+          content:
+            `Generate the material for the following lesson: ${lesson}.` +
+            "The material you generate should include information from the uploaded material. Write the lesson" +
+            "so that it gives a student reading it deep comprehension of the topic. End by writing 3-5 relevant discussion questions.",
+        },
+      ],
     });
 
     // Initiate a run of given thread
@@ -270,7 +273,8 @@ async function generate_summary(assistantID, lesson, thread) {
       retries++;
     }
 
-    const summary = await get_last_message(thread, run);
+    const messages = await get_last_message(thread, run);
+    const summary = messages.data[0].content[0].text.value;
 
     // save summary to pdf
     save_to_pdf(summary, lesson + " Summary");
