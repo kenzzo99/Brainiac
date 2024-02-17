@@ -5,12 +5,15 @@ const express = require("express");
 const gptService = require("./gptService");
 const cors = require("cors");
 const uploadRouter = require("./routes/upload");
-const axios = require('axios');
+const axios = require("axios");
+
 // MongoDB dependencies and models.
 const mongoose = require("mongoose");
 const User = require("./models/user"); // database schemas for mongoDB
 const Lesson = require("./models/lesson");
 const Course = require("./models/course");
+const Quiz = require("./models/quiz");
+const fs = require("fs");
 
 require("dotenv").config();
 
@@ -37,27 +40,6 @@ app.use(cors()); // Enable CORS for all routes
 app.use(express.json()); // Enable JSON parsing for all routes
 let assistant; // Global variable to store the assistant ID
 
-// /**
-//  * Writes a buffer to a temporary file.
-//  *
-//  * @param {Buffer} buffer - The buffer to write to a file.
-//  * @param {function} callback - The callback function to execute after the file has been written.
-//  * @returns {void}
-//  */
-// function writeBufferToTempFile(buffer, callback) {
-//     // Generate a unique filename
-//     const fileName = "upload" + Date.now().toString();
-//     // Write the buffer to a temporary file
-//     fs.writeFile(fileName, buffer, (err) => {
-//       if (err) {
-//         console.error("Error writing file to temp:", err);
-//         return callback(err);
-//       }
-//       callback(null, fileName);
-//     });
-//   }
-
-
 app.use("/upload", uploadRouter);
 
 /**
@@ -74,40 +56,27 @@ app.use("/upload", uploadRouter);
  */
 
 app.post("/generateSummary", async (req, res) => {
-    // get the userID from the request
-    const userID = req.body.userID;
+  // get the userID from the request
+  const userID = req.body.userID;
 
-    // get the courseID from the request
-    const courseID = req.body.courseID;
-    console.log("Course ID: ", courseID);
-    // get the lessonTitle from the request
-    const lessonTitle = req.body.lessonTitle;
-    console.log("Lesson Name: ", lessonTitle);
-    // get assistantID from courseID
-    const course = await Course.findById(courseID);
-    if (!course) {
-      return res.status(404).json({ message: "Course not found" });
-    }
-    const assistantID = course.assistantID;
-    console.log("Assistant ID: ", assistantID);
-    
-    console.log("We are here");
-    // Generate the summary for the given lesson
-    let summary = await gptService.generate_summary(assistantID, lessonTitle);
-    // Create new Lesson db entry using summary
-    const newLesson = new Lesson({
-        title: lessonTitle,
-        content: summary,
-        courseID: courseID,
-    });
-    newLesson.save().then((result) => {
-        console.log(result);
-    }).catch((err) => {
-        console.log(err);
-    });
-    // Add the lesson to the course
-    course.addLessons(newLesson.id);
-    res.json(newLesson);
+  // get the courseID from the request
+  const courseID = req.body.courseID;
+  console.log("Course ID: ", courseID);
+  // get the lessonTitle from the request
+  const lessonTitle = req.body.lessonTitle;
+  console.log("Lesson Name: ", lessonTitle);
+  // get assistantID from courseID
+  const course = await Course.findById(courseID);
+  if (!course) {
+    return res.status(404).json({ message: "Course not found" });
+  }
+  const assistantID = course.assistantID;
+  console.log("Assistant ID: ", assistantID);
+  const threadID = course.threadID;
+  console.log("We are here");
+  // Generate the summary for the given lesson
+  let newLesson = await gptService.generate_summary(assistantID, lessonTitle, threadID);
+  res.json(newLesson);
 });
 
 app.post("/generateCurriculum", async (req, res) => {
@@ -123,9 +92,13 @@ app.post("/generateCurriculum", async (req, res) => {
   // get assistant id from the course
   const assistantID = course.assistantID;
   // Generate the curriculum (returns a JSON object of curriculum)
-  let curriculum = await gptService.generate_curriculum(assistantID);
+  let result = await gptService.generate_curriculum(assistantID);
+  let curriculum = result.curriculum;
+  let threadID = result.threadID;
   // Store the curriculum for the course
   course.curriculum = JSON.stringify(curriculum);
+  // Store the thread for the course
+  course.threadID = threadID;
   await course.save();
   // return the curriculum
   res.json(curriculum);
@@ -158,7 +131,11 @@ app.post("/generateMaterials", async (req, res) => {
   course.description = intro;
   await course.save();
 
-  let summaries = gptService.generate_summaries(assistantID, curriculum, thread);
+  let summaries = gptService.generate_summaries(
+    assistantID,
+    curriculum,
+    thread
+  );
 
   // Create new Course db entry using curriculum and summaries
   // const newCourse = new Course({
@@ -187,12 +164,10 @@ app.get("/api/curriculum/:courseID", async (req, res) => {
     }
     res.send(course.curriculum);
   } catch (error) {
-    console.error('Error retrieving curriculum:', error);
-    res.status(500).send('Error retrieving curriculum');
+    console.error("Error retrieving curriculum:", error);
+    res.status(500).send("Error retrieving curriculum");
   }
 });
-
-
 
 // Route for fetching the summary for a lesson
 app.get("/api/summary/:courseID/:lessonTitle", async (req, res) => {
@@ -201,23 +176,90 @@ app.get("/api/summary/:courseID/:lessonTitle", async (req, res) => {
     const lessonTitle = req.params.lessonTitle;
     console.log("Course ID: ", courseID);
     console.log("Lesson Title: ", req.params.lessonTitle);
-    const lesson = await Lesson.findOne({ courseID: courseID, title: lessonTitle });
+    let lesson = await Lesson.findOne({
+      courseID: courseID,
+      title: lessonTitle,
+    });
     if (!lesson) {
       // Call the generateSummary route
-      const summaryResponse = await axios.post(`http://localhost:5000/generateSummary`, {
-        courseID: courseID,
-        lessonTitle: lessonTitle
-      });
-      console.log("Summary Response: ", summaryResponse.data);
-      const summary = summaryResponse.data;
-      return res.status(200).json( summary );
+      const summaryResponse = await axios.post(
+        `http://localhost:5000/generateSummary`,
+        {
+          courseID: courseID,
+          lessonTitle: lessonTitle,
+        }
+      );
+      console.log("Summary Response: ", summaryResponse);
+      lesson = summaryResponse.data.content;
+      lesson = await gptService.save_to_pdf(lesson, lessonTitle); // returns path to file
+      res.status(200).sendFile(lesson);
+      // Wait 4 seconds
+      setTimeout(() => {
+        fs.unlink(lesson, (err) => {
+          if (err) {
+            console.error("Error deleting file:", err);
+          } else {
+            console.log("File deleted successfully");
+          }
+        });
+      }, 4000);
+      return;
     }
-    res.send(lesson.content);
+
+    lesson = lesson.data.content;
+    lesson = await gptService.save_to_pdf(lesson, lessonTitle); // returns path to file
+    res.status(200).sendFile(lesson);
+     // Wait 4 seconds
+     setTimeout(() => {
+      fs.unlink(lesson, (err) => {
+        if (err) {
+          console.error("Error deleting file:", err);
+        } else {
+          console.log("File deleted successfully");
+        }
+      });
+    }, 4000);
+    return;
   } catch (error) {
-    console.error('Error retrieving summary:', error);
-    res.status(500).send('Error retrieving summary');
+    console.error("Error retrieving summary:", error);
+    res.status(500).send("Error retrieving summary");
   }
 });
 
+app.get('/api/quiz/:courseID/:lessonTitle', async (req, res) => {
+  try {
+    console.log("Getting quiz")
+    const lessonTitle = req.params.lessonTitle;
+    console.log("Lesson Title: ", lessonTitle);
+    const courseID = req.params.courseID;
+    console.log("Course ID: ", courseID);
+    // get lessonID from lessonTitle
+    const lesson = await Lesson.findOne({
+      title: lessonTitle,
+      courseID: courseID
+    });
+    // check if lesson already has a quiz
+    let quiz = await Quiz.findOne({ lessonID: lesson._id });
+    if (!quiz) {
+      console.log("No quiz found for lesson, gonna generate one real quick.");
+      // get assistantID from courseID
+      const course = await Course.findById(courseID);
+      if (!course) {
+        return res.status(404).json({ message: "Course not found" });
+      }
+      const assistantID = course.assistantID;
+      const threadID = course.threadID;
+      quiz = await gptService.generate_quiz(assistantID, lessonTitle, threadID);
+      // add quiz to course
+      course.addQuizzes([quiz._id]);
+    }
+    console.log("Quiz:", quiz.questions);
+    res.status(200).send(quiz.questions);
+  }
+  catch (error) {
+    console.error("Error retrieving quiz:", error);
+    res.status(500).send("Error retrieving quiz");
+  }
+});
 // Start the server
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

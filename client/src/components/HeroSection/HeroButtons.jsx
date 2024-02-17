@@ -72,7 +72,7 @@ const HeroButtons = () => {
       const response = await fetch(
         `http://localhost:5000/api/curriculum/${courseID}`
       );
-      const existingCurriculum = await response.json();
+      const existingCurriculum = await response.text();
 
       if (existingCurriculum && Object.keys(existingCurriculum).length > 0) {
         // If a curriculum exists, navigate to it
@@ -89,7 +89,7 @@ const HeroButtons = () => {
             body: JSON.stringify(requestBody),
           }
         );
-        const result = await response.json();
+        const result = await response.text();
         setCurriculum(result);
         console.log("Curriculum generated successfully", result);
 

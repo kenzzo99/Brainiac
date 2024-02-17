@@ -5,34 +5,33 @@ import PDFViewer from "./PDFViewer";
 function LessonSummaryButton({ courseID, lessonTitle }) {
   const [summary, setSummary] = useState(null);
   const [showReader, setShowReader] = useState(false);
+  // This should be a URL to the endpoint that streams the PDF file
+  const url = `http://localhost:5000/api/summary/${courseID}/${lessonTitle}`;
 
-const handleClick = async () => {
+  // const handleClick = async () => {
+  //   try {
+  //     setShowReader(prevShowReader => !prevShowReader);
+  //   } catch (error) {
+  //     console.error("Error:", error);
+  //   }
+  // };
+
+  const handleClick = async () => {
     try {
-        console.log("Lesson Title:", lessonTitle);
-        const response = await fetch(
-            `http://localhost:5000/api/summary/${courseID}/${lessonTitle}`
-        );
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const lesson = await response.text();
-        console.log("Summary data:", lesson);
-        setSummary(lesson);
-        setShowReader(true);
+      // Open the PDF in a new window
+      window.open(url, '_blank');
     } catch (error) {
-        console.error("Error:", error);
+      console.error("Error:", error);
     }
-};
+  };
 
   return (
-    <div>
-      <Button color="primary" size="lg" onClick={handleClick}>
+    
+      <Button color="default" size="lg" onClick={handleClick}>
         Lesson Summary
       </Button>
-      {summary && showReader && <PDFViewer file={summary} />}
-    </div>
+      /*{/* {showReader && <PDFViewer file={url} />} */
+    
   );
 }
 

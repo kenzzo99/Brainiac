@@ -10,6 +10,7 @@ const CourseSchema = new mongoose.Schema({
   // add GPTstudentID - AI for Feynman studying
   lessonIDs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Lesson' }],
   quizIDs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Quiz' }],
+  threadID: { type: String }
   // Include other relevant fields as needed
 });
 

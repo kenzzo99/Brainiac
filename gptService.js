@@ -7,15 +7,18 @@
 const OpenAI = require("openai");
 const fs = require("fs");
 const PDFDocument = require("pdfkit");
+const path = require("path");
 require("dotenv").config();
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-const Lesson = require("./models/lesson");
-// NOTE: Right now assistant is created only once and the file is discarted on our end - to save on money
-// it might be good to store the file on MongoDB and to build the tutor only on days that the user boots it
-// up, as storage is priced at 0.20$ per day per assistant
 
+// MongoDB models.
+const mongoose = require("mongoose");
+const User = require("./models/user"); // database schemas for mongoDB
+const Lesson = require("./models/lesson");
+const Course = require("./models/course");
+const Quiz = require("./models/quiz");
 /**
  * Creates an OpenAI Assistant Tutor that specializes in the subject covered in the uploaded files.
  * Additional parameters can be passed to modify personality and behaviour of the tutor.
@@ -87,20 +90,27 @@ async function uploadFile(files) {
  * @returns {Promise<void>} Resolves when the PDF has been successfully saved.
  * @throws {Error} If there is an error in saving the PDF.
  */
+
 async function save_to_pdf(text, filename) {
   try {
     // Create a document
     const doc = new PDFDocument();
-
-    // Pipe its output somewhere, like to a file or HTTP response
-    // NOTE: SAVE TO DB ONCE IMPLEMENTED
-    doc.pipe(fs.createWriteStream(filename + ".pdf"));
-
+    // Save to dir uploads
+    // add time stamp to filename
+    filename = filename + Date.now();
+    doc.pipe(
+      fs.createWriteStream("./lessons/" + filename + " Summary" + ".pdf")
+    );
+    let relPath = "./lessons/" + filename + " Summary" + ".pdf";
+    let absolutePath = path.resolve(__dirname, relPath);
     // Add your text to the document
     doc.text(text);
 
     // Finalize the PDF and end the stream
     doc.end();
+    // buffer 2 seconds
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    return absolutePath;
   } catch (error) {
     console.error(error);
     throw new Error("Failed to save PDF");
@@ -116,15 +126,15 @@ async function save_to_pdf(text, filename) {
  * @returns {Promise<Object>} The last message from the given thread and run.
  * @throws {Error} If there is an error in retrieving the last message.
  */
-async function get_last_message(thread, run) {
+async function get_last_message(threadID, run) {
   try {
     // Imediately fetch run-status, which will be "in_progress"
-    let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+    let runStatus = await openai.beta.threads.runs.retrieve(threadID, run.id);
 
     // Polling mechanism to see if runStatus is completed
     while (runStatus.status !== "completed") {
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+      runStatus = await openai.beta.threads.runs.retrieve(threadID, run.id);
     }
 
     // Check for failed, cancelled, or expired status (ADD ERROR HERE IF FAILED)
@@ -134,10 +144,12 @@ async function get_last_message(thread, run) {
       );
     }
 
-    const messages = await openai.beta.threads.messages.list(thread.id);
-    console.log("response = messages.data[0].content[0].text.value: " + messages.data[0].content[0].text.value);
+    const messages = await openai.beta.threads.messages.list(threadID);
+    console.log(
+      "response = messages.data[0].content[0].text.value: " +
+        messages.data[0].content[0].text.value
+    );
     return messages;
-
   } catch (error) {
     console.error(error);
     throw new Error("Failed to get last message");
@@ -175,22 +187,23 @@ async function generate_curriculum(assistantID) {
     assistant_id: assistantID,
   });
 
+  
+  
   // Get last message (JSON string of the curriculum)
   let response = await get_last_message(thread, run);
-  let message_content = response.data[0].content[0].text.value
+  let message_content = response.data[0].content[0].text.value;
   console.log("Message Content: " + message_content);
 
   // const jsonPattern = /{.*?}}/g;
   // const match = message_content.match(jsonPattern);
 
-  
   // if (match) {
   //   curriculum = JSON.parse(match);
   // }
-
+  let threadID = thread.id;
   let curriculum = JSON.parse(message_content);
   console.log("Curriculum: " + curriculum);
-  return curriculum;
+  return { curriculum, threadID };
 }
 
 /**
@@ -237,23 +250,19 @@ async function generate_intro(assistantID, thread) {
  * @throws {Error} If there is an error in generating the summaries.
  */
 
-async function generate_summary(assistantID, lesson) {
+async function generate_summary(assistantID, lesson, threadID) {
   try {
-    // create a thread with an initial message
-    const thread = await openai.beta.threads.create({
-      messages: [
-        {
-          role: "user",
-          content:
-            `Generate the material for the following lesson: ${lesson}.` +
-            "The material you generate should include information from the uploaded material. Write the lesson" +
-            "so that it gives a student reading it deep comprehension of the topic. End by writing 3-5 relevant discussion questions.",
-        },
-      ],
+    // add a message to the thread
+    const message = await openai.beta.threads.messages.create(threadID, {
+      role: "user",
+      content:
+        `Generate the material for the following lesson: ${lesson}.` +
+        "The material you generate should include information from the uploaded material. Write the lesson" +
+        "so that it gives a student reading it deep comprehension of the topic. End by writing 3-5 relevant discussion questions.",
     });
 
     // Initiate a run of given thread
-    const run = await openai.beta.threads.runs.create(thread.id, {
+    const run = await openai.beta.threads.runs.create(threadID, {
       assistant_id: assistantID,
     });
 
@@ -261,7 +270,7 @@ async function generate_summary(assistantID, lesson) {
     let retries = 0;
     while (retries < 10) {
       const runInfo = await openai.beta.threads.runs.retrieve(
-        (thread_id = thread.id),
+        (thread_id = threadID),
         (run_id = run.id)
       );
       if (runInfo.completed_at) {
@@ -273,25 +282,37 @@ async function generate_summary(assistantID, lesson) {
       retries++;
     }
 
-    const messages = await get_last_message(thread, run);
+    const messages = await get_last_message(threadID, run);
     const summary = messages.data[0].content[0].text.value;
-
-    // save summary to pdf
-    save_to_pdf(summary, lesson + " Summary");
-    return summary;
+    // find courseID by assistantID
+    const course = await Course.findOne({ assistantID: assistantID });
+    // create new Lesson and save to db
+    const newLesson = new Lesson({
+      title: lesson,
+      content: summary,
+      courseID: course._id,
+      threadID: threadID,
+    });
+    // save to db
+    newLesson.save().catch((err) => {
+      console.log(err);
+    });
+    // Add the lesson to the course
+    course.addLessons([newLesson._id]);
+    return newLesson;
   } catch (error) {
     console.error("Error generating summary:", error);
   }
 }
 
-async function generate_summaries(assistantID, curriculum, thread) {
+async function generate_summaries(assistantID, curriculum, threadID) {
   try {
     console.log("Generating summaries...");
     // For each lesson in the curriculum JSON file, generate a material to read and study from
     for (const lesson in curriculum) {
       if (Object.prototype.hasOwnProperty.call(curriculum, lesson)) {
         // Add a message to the thread
-        const message = await openai.beta.threads.messages.create(thread.id, {
+        const message = await openai.beta.threads.messages.create(threadID, {
           role: "user",
           content:
             `Generate the material for the following lesson: ${curriculum[lesson].Title}.` +
@@ -300,7 +321,7 @@ async function generate_summaries(assistantID, curriculum, thread) {
         });
 
         // Initiate a run of given thread
-        const run = await openai.beta.threads.runs.create(thread.id, {
+        const run = await openai.beta.threads.runs.create(threadID, {
           assistant_id: assistantID,
         });
 
@@ -308,7 +329,7 @@ async function generate_summaries(assistantID, curriculum, thread) {
         let retries = 0;
         while (retries < 10) {
           const runInfo = await openai.beta.threads.runs.retrieve(
-            (thread_id = thread.id),
+            (thread_id = threadID),
             (run_id = run.id)
           );
           if (runInfo.completed_at) {
@@ -320,7 +341,7 @@ async function generate_summaries(assistantID, curriculum, thread) {
           retries++;
         }
 
-        const summary = await get_last_message(thread, run);
+        const summary = await get_last_message(threadID, run);
         save_to_pdf(summary, curriculum[lesson].Title + " Summary");
       }
     }
@@ -339,7 +360,7 @@ async function generate_summaries(assistantID, curriculum, thread) {
  * @returns {Promise<void>} Resolves when the quizzes have been successfully generated and saved to PDFs.
  * @throws {Error} If there is an error in generating the quizzes.
  */
-async function generate_quiz(assistantID, curriculum, thread) {
+async function generate_quizzes(assistantID, curriculum, thread) {
   try {
     // For each lesson in the curriculum JSON file, generate a quiz
     for (const lesson in curriculum) {
@@ -385,12 +406,69 @@ async function generate_quiz(assistantID, curriculum, thread) {
   }
 }
 
+async function generate_quiz(assistantID, lessonTitle, threadID) {
+  // get courseID by assistantID
+  const course = await Course.findOne({ assistantID: assistantID });
+  // get lesson by title and courseID
+  const lesson = await Lesson.findOne({ title: lessonTitle, courseID: course._id });
+  // Add a message to the thread
+  const message = await openai.beta.threads.messages.create(threadID, {
+    role: "user",
+    content:
+      `Generate a quiz of 6-10 questions for the following lesson: ${lesson.title}.` +
+      "Please output the json text and nothing else. Begin your response with {" +
+      " and DO NOT add '''json at the beginning. Follow this format CLOSELY:" +
+      '{"question #": <question>","options": [<options>],' +
+      '"correct_answer": <asnwer>}, question #: etc.',
+  });
+
+  // Initiate a run of given thread
+  const run = await openai.beta.threads.runs.create(threadID, {
+    assistant_id: assistantID,
+  });
+
+  // Wait for the run to complete
+  let retries = 0;
+  while (retries < 10) {
+    const runInfo = await openai.beta.threads.runs.retrieve(
+      (thread_id = threadID),
+      (run_id = run.id)
+    );
+    if (runInfo.completed_at) {
+      break;
+    }
+    // delays for 5 sec
+    console.log("Waiting 5 seconds...");
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+    retries++;
+  }
+  // get last message
+  const questions = await get_last_message(threadID, run);
+  // save to db
+  const newQuiz = new Quiz({
+    title: lesson.title,
+    courseID: course._id,
+    lessonID: lesson._id,
+    questions: questions,
+  });
+  // save to db
+  newQuiz.save().catch((err) => {
+    console.log(err);
+  });
+  // Add the quiz to the course
+  course.addQuizzes([newQuiz._id]);
+  // Add the quiz to the lesson
+  lesson.addQuizzes([newQuiz._id]);
+}
+
 module.exports = {
   createAssistant,
   uploadFile,
+  save_to_pdf,
   generate_curriculum,
   generate_intro,
   generate_quiz,
+  generate_quizzes,
   generate_summary,
   generate_summaries,
 };

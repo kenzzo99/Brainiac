@@ -2,6 +2,7 @@
 const mongoose = require("mongoose");
 const User = require("./models/user"); // database schemas for mongoDB
 const Course = require("./models/course");
+const Lesson = require("./models/lesson");
 require("dotenv").config();
 
 // Connect to MongoDB
@@ -20,20 +21,16 @@ db.once("open", function () {
   console.log("Connected successfully to MongoDB");
 });
 
+async function deleteAndRemoveLessons() {
+  try {
+    await Course.deleteMany({});
+    console.log("All lessons deleted");
+    await Lesson.deleteMany({});
+    await Course.updateMany({}, { $set: { lessons: [] } });
+    console.log("All lessons removed from all courses");
+  } catch (err) {
+    console.error(err);
+  }
+}
 
-// Create a new user
-const user = new User({
-    username: 'aknez',
-    email: 'email@example.com',
-    password: 'password',
-    name: 'Antonio',
-});
-
-// Save the user
-user.save()
-    .then(savedUser => {
-        console.log('User saved successfully:', savedUser);
-    })
-    .catch(err => {
-        console.error(err);
-    });
+deleteAndRemoveLessons();
